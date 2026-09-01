@@ -167,10 +167,11 @@ var photosPending = {};
 
 var SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
 var recognition = SpeechRec ? new SpeechRec() : null;
+var wantRecording = false; // controla si onend debe reiniciar la escucha
 if (recognition) {
     recognition.lang = 'es-ES';
-    recognition.interimResults = true;
-    recognition.continuous = true;
+    recognition.interimResults = false; // solo resultados finales: evita el bug de duplicados de "continuous"
+    recognition.continuous = false;
 }
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -231,12 +232,12 @@ function toggleRecording() {
     }
 
     if (isRecording) {
+        wantRecording = false; // evita que onend la reinicie
         recognition.stop();
         return;
     }
 
-    var baseText = document.getElementById('transcription').value;
-    if (baseText && !baseText.endsWith(' ')) baseText += ' ';
+    wantRecording = true;
 
     recognition.onstart = function() {
         isRecording = true;
@@ -244,43 +245,51 @@ function toggleRecording() {
         document.getElementById('timer').textContent = 'Escuchando...';
     };
 
+    // Sesion corta (continuous=false): en cada onresult solo llega el
+    // resultado final de ESTA frase, se agrega una sola vez al texto.
     recognition.onresult = function(event) {
-        var finalTranscript = '';
-        var interimTranscript = '';
-        for (var i = event.resultIndex; i < event.results.length; i++) {
+        var finalText = '';
+        for (var i = 0; i < event.results.length; i++) {
             if (event.results[i].isFinal) {
-                finalTranscript += event.results[i][0].transcript + ' ';
-            } else {
-                interimTranscript += event.results[i][0].transcript;
+                finalText += event.results[i][0].transcript;
             }
         }
-        if (finalTranscript) {
-            baseText += finalTranscript;
+        finalText = finalText.trim();
+        if (finalText) {
+            var ta = document.getElementById('transcription');
+            var current = ta.value;
+            if (current && !/\s$/.test(current)) current += ' ';
+            ta.value = current + finalText;
+            autoDetectCategory();
         }
-        document.getElementById('transcription').value = baseText + interimTranscript;
-        autoDetectCategory();
     };
 
     recognition.onerror = function(e) {
         console.log('Speech recognition error:', e.error);
         if (e.error === 'not-allowed' || e.error === 'permission-denied') {
             alert('Permiso de microfono denegado. Revisa el candado junto a la URL en Chrome y habilita el microfono.');
-        } else if (e.error === 'no-speech') {
-            // silencio, no es un error real, se reinicia solo
-        } else {
-            document.getElementById('timer').textContent = 'Error: ' + e.error;
+            wantRecording = false;
         }
+        // 'no-speech' y otros errores transitorios: onend decide si reintenta
     };
 
+    // Como continuous=false, el navegador termina la sesion tras cada
+    // frase. Si el usuario sigue queriendo grabar, se reinicia sola
+    // (efecto "continuo" real, sin el bug de duplicados).
     recognition.onend = function() {
-        isRecording = false;
-        document.getElementById('recordBtn').classList.remove('recording');
-        document.getElementById('timer').textContent = '';
+        if (wantRecording) {
+            try { recognition.start(); } catch (e) {}
+        } else {
+            isRecording = false;
+            document.getElementById('recordBtn').classList.remove('recording');
+            document.getElementById('timer').textContent = '';
+        }
     };
 
     try {
         recognition.start();
     } catch (err) {
+        wantRecording = false;
         document.getElementById('timer').textContent = 'No se pudo iniciar: ' + err.message;
     }
 }
