@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#2c3e50">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Captura Terreno</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+:root {
+  --primary: #2c3e50; --accent: #3498db; --success: #27ae60; --warning: #f39c12;
+  --danger: #e74c3c; --light: #ecf0f1; --dark: #34495e;
+}
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; background: #f5f7fa; color: var(--dark); overflow-x: hidden; }
+
+.container { max-width: 1100px; margin: 0 auto; min-height: 100vh; display: flex; flex-direction: column; }
+
+header { background: var(--primary); color: white; padding: 0.9rem 1rem; padding-top: calc(0.9rem + env(safe-area-inset-top)); text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+header h1 { font-size: 1.3rem; margin-bottom: 0.15rem; }
+header p { font-size: 0.8rem; opacity: 0.9; }
+
+.layout { flex: 1; display: flex; flex-direction: column; }
+@media (min-width: 900px) {
+  .layout { flex-direction: row; }
+  .capture-col { width: 380px; flex-shrink: 0; border-right: 1px solid #ddd; }
+  .list-col { flex: 1; }
+}
+
+.capture-col { background: white; padding: 1rem; }
+.list-col { padding: 1rem; padding-bottom: 100px; }
+@media (min-width: 900px) { .list-col { padding-bottom: 1rem; } }
+
+.recording-box { display: flex; flex-direction: column; gap: 0.9rem; }
+
+.btn-record { border: none; border-radius: 50%; width: 90px; height: 90px; font-size: 2.2rem; cursor: pointer; align-self: center; background: var(--danger); color: white; box-shadow: 0 4px 14px rgba(231, 76, 60, 0.35); transition: transform 0.15s; }
+.btn-record.recording { animation: pulse 1s infinite; background: #c0392b; }
+@keyframes pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.08); } }
+
+.timer { text-align: center; font-size: 1rem; font-weight: bold; color: var(--danger); min-height: 1.4rem; }
+
+.transcription { background: white; padding: 1rem; border-radius: 8px; min-height: 100px; border: 1px solid #ddd; resize: vertical; font-size: 1rem; font-family: inherit; width: 100%; }
+.category-select, .address-input { padding: 0.8rem; border: 1px solid #ddd; border-radius: 8px; font-size: 1rem; width: 100%; background: white; }
+.gps-info { background: #e8f4f8; padding: 0.7rem; border-radius: 8px; font-size: 0.85rem; text-align: center; }
+.gps-info.active { background: #d4edda; color: #155724; }
+
+.btn-group { display: flex; gap: 0.5rem; }
+.btn { flex: 1; padding: 0.85rem; border: none; border-radius: 8px; font-size: 1rem; font-weight: 600; cursor: pointer; }
+.btn-success { background: var(--success); color: white; }
+.btn-secondary { background: var(--light); color: var(--dark); border: 1px solid #ddd; }
+.btn-primary { background: var(--accent); color: white; }
+.btn-warning { background: var(--warning); color: white; }
+
+.notes-list { display: flex; flex-direction: column; gap: 0.7rem; }
+.notes-list.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 0.7rem; }
+
+.note-item { background: white; padding: 0.8rem; border-radius: 8px; border-left: 4px solid var(--accent); box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+.note-category { display: inline-block; padding: 0.2rem 0.65rem; border-radius: 12px; font-size: 0.75rem; font-weight: 600; margin-bottom: 0.35rem; }
+.cat-pavimento { background: #ffeaa7; color: #2d3436; }
+.cat-areas-verdes { background: #a9e6a9; color: #2d3436; }
+.cat-aseo { background: #b8daff; color: #2d3436; }
+.cat-alumbrado { background: #f5c6cb; color: #2d3436; }
+.cat-otro { background: #e2e3e5; color: #2d3436; }
+.note-text { font-size: 0.92rem; margin-bottom: 0.5rem; }
+.note-address { font-size: 0.8rem; color: #555; margin-bottom: 0.4rem; }
+.note-meta { font-size: 0.75rem; color: #666; display: flex; justify-content: space-between; align-items: center; }
+.note-actions { display: flex; gap: 0.5rem; }
+.note-actions button { padding: 0.35rem 0.6rem; font-size: 0.85rem; border: none; border-radius: 4px; background: white; border: 1px solid #ddd; }
+
+.sync-status { background: #d4edda; color: #155724; padding: 0.5rem; border-radius: 6px; font-size: 0.85rem; margin-top: 0.5rem; }
+.sync-status.error { background: #f8d7da; color: #721c24; }
+.loading { display: inline-block; width: 0.9rem; height: 0.9rem; border: 2px solid #f3f3f3; border-top: 2px solid var(--accent); border-radius: 50%; animation: spin 1s linear infinite; }
+@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+.bottom-bar { position: fixed; bottom: 0; left: 0; right: 0; background: white; border-top: 1px solid #ddd; padding: 0.6rem 1rem; padding-bottom: calc(0.6rem + env(safe-area-inset-bottom)); display: flex; gap: 0.5rem; max-width: 1100px; margin: 0 auto; }
+@media (min-width: 900px) { .bottom-bar { position: static; border-top: none; padding: 1rem 0 0; margin-top: auto; } }
+
+#reportModal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 1000; overflow-y: auto; }
+#reportModal .box { background: white; margin: 1rem auto; border-radius: 8px; padding: 1rem; max-width: 900px; }
+#reportModal .box-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+#reportModal .box-header button { border: none; background: none; font-size: 1.5rem; cursor: pointer; }
+.report-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 0.75rem; margin-bottom: 1rem; }
+.stat-box { background: var(--light); padding: 0.8rem; border-radius: 6px; text-align: center; }
+.stat-number { font-size: 1.5rem; font-weight: bold; color: var(--accent); }
+.stat-label { font-size: 0.8rem; color: #666; }
+
+.list-count { color: var(--primary); margin-bottom: 0.75rem; font-size: 1.1rem; font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>Captura Terreno</h1>
+    <p id="title-time"></p>
+  </header>
+
+  <div class="layout">
+    <div class="capture-col">
+      <div class="recording-box">
+        <button class="btn-record" id="recordBtn" type="button" title="Dictar">MIC</button>
+        <div class="timer" id="timer"></div>
+
+        <textarea class="transcription" id="transcription" placeholder="Toca el microfono y dicta, o escribe..."></textarea>
+
+        <select class="category-select" id="category">
+          <option value="">Seleccionar categoria...</option>
+          <option value="pavimento">Pavimentos/Calles</option>
+          <option value="areas-verdes">Areas verdes</option>
+          <option value="aseo">Aseo/Limpieza</option>
+          <option value="alumbrado">Alumbrado publico</option>
+          <option value="otro">Otro</option>
+        </select>
+
+        <div class="gps-info" id="gpsInfo">Obteniendo ubicacion...</div>
+        <input type="text" class="address-input" id="addressInput" placeholder="Direccion (opcional, si el GPS no es exacto)">
+
+        <input type="file" id="photoInput" accept="image/*" capture="environment" style="display:none">
+        <button class="btn btn-secondary" id="photoBtn" type="button" style="width:100%;">Agregar foto</button>
+        <div id="photoPreview" style="display:none; align-items:center; gap:0.5rem; background:var(--light); padding:0.5rem; border-radius:8px; border:1px solid #ddd;">
+          <img id="photoPreviewImg" style="width:70px; height:70px; object-fit:cover; border-radius:6px;">
+          <button id="removePhotoBtn" type="button" style="margin-left:auto; padding:0.4rem 0.7rem; border:1px solid #ddd; border-radius:6px; background:white; cursor:pointer;">Quitar</button>
+        </div>
+
+        <div class="btn-group">
+          <button class="btn btn-secondary" id="clearBtn" type="button">Limpiar</button>
+          <button class="btn btn-success" id="saveBtn" type="button">Guardar</button>
+        </div>
+
+        <div id="syncStatus"></div>
+      </div>
+    </div>
+
+    <div class="list-col">
+      <div class="list-count">Solicitudes (<span id="noteCount">0</span>)</div>
+      <div class="notes-list" id="notesList"></div>
+    </div>
+  </div>
+
+  <div class="bottom-bar">
+    <button class="btn btn-primary" id="syncBtn" type="button">Sincronizar</button>
+    <button class="btn btn-warning" id="reportBtn" type="button">Informe</button>
+  </div>
+</div>
+
+<div id="reportModal">
+  <div class="box">
+    <div class="box-header">
+      <h2>Informe</h2>
+      <button onclick="closeReport()">Cerrar</button>
+    </div>
+    <div id="reportContent"></div>
+  </div>
+</div>
+
+<script>
+// ======================================================================
+// CONFIGURACION: pega aqui la URL de tu Apps Script (.../exec)
+// ======================================================================
+var SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwipsYdfMcN-2TBpVhg6KhBuy4TFybjaD3xgzkuOpp99wyuHeA9QXTHofLO3TrYyZHI/exec';
+
+var PIN_ICON = String.fromCodePoint(0x1F4CD);
+var notes = [];
+var currentLocation = null;
+var isRecording = false;
+var pendingPhotoBase64 = null;
+var photosPending = {};
+
+var SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+var recognition = SpeechRec ? new SpeechRec() : null;
+if (recognition) {
+    recognition.lang = 'es-ES';
+    recognition.interimResults = true;
+    recognition.continuous = true;
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadNotes();
+    updateTime();
+    getLocation();
+    setInterval(getLocation, 30000);
+    setInterval(updateTime, 1000);
+
+    document.getElementById('recordBtn').addEventListener('click', toggleRecording);
+    document.getElementById('saveBtn').addEventListener('click', saveNote);
+    document.getElementById('clearBtn').addEventListener('click', clearForm);
+    document.getElementById('syncBtn').addEventListener('click', syncToSheets);
+    document.getElementById('reportBtn').addEventListener('click', generateReport);
+    document.getElementById('transcription').addEventListener('input', autoDetectCategory);
+
+    document.getElementById('photoBtn').addEventListener('click', function() {
+        document.getElementById('photoInput').click();
+    });
+    document.getElementById('photoInput').addEventListener('change', handlePhotoSelected);
+    document.getElementById('removePhotoBtn').addEventListener('click', clearPendingPhoto);
+
+    document.getElementById('transcription').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+            e.preventDefault();
+            saveNote();
+        }
+    });
+
+    updateFooter();
+});
+
+function updateTime() {
+    var now = new Date();
+    var el = document.getElementById('title-time');
+    if (el) el.textContent = now.toLocaleDateString('es-CL') + ' ' + now.toLocaleTimeString('es-CL', {hour: '2-digit', minute: '2-digit', second: '2-digit'});
+}
+
+function getLocation() {
+    if ('geolocation' in navigator) {
+        navigator.geolocation.getCurrentPosition(function(pos) {
+            currentLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: Math.round(pos.coords.accuracy) };
+            var el = document.getElementById('gpsInfo');
+            el.innerHTML = PIN_ICON + ' ' + currentLocation.lat.toFixed(5) + ', ' + currentLocation.lng.toFixed(5) + ' (+/-' + currentLocation.accuracy + 'm)';
+            el.classList.add('active');
+        }, function(err) {
+            document.getElementById('gpsInfo').innerHTML = 'Sin GPS: ' + err.message;
+        }, {enableHighAccuracy: true, timeout: 10000});
+    } else {
+        document.getElementById('gpsInfo').innerHTML = 'GPS no soportado en este navegador';
+    }
+}
+
+function toggleRecording() {
+    if (!recognition) {
+        alert('Este navegador no soporta reconocimiento de voz. Prueba con Chrome. Puedes escribir manualmente.');
+        return;
+    }
+
+    if (isRecording) {
+        recognition.stop();
+        return;
+    }
+
+    var baseText = document.getElementById('transcription').value;
+    if (baseText && !baseText.endsWith(' ')) baseText += ' ';
+
+    recognition.onstart = function() {
+        isRecording = true;
+        document.getElementById('recordBtn').classList.add('recording');
+        document.getElementById('timer').textContent = 'Escuchando...';
+    };
+
+    recognition.onresult = function(event) {
+        var finalTranscript = '';
+        var interimTranscript = '';
+        for (var i = event.resultIndex; i < event.results.length; i++) {
+            if (event.results[i].isFinal) {
+                finalTranscript += event.results[i][0].transcript + ' ';
+            } else {
+                interimTranscript += event.results[i][0].transcript;
+            }
+        }
+        if (finalTranscript) {
+            baseText += finalTranscript;
+        }
+        document.getElementById('transcription').value = baseText + interimTranscript;
+        autoDetectCategory();
+    };
+
+    recognition.onerror = function(e) {
+        console.log('Speech recognition error:', e.error);
+        if (e.error === 'not-allowed' || e.error === 'permission-denied') {
+            alert('Permiso de microfono denegado. Revisa el candado junto a la URL en Chrome y habilita el microfono.');
+        } else if (e.error === 'no-speech') {
+            // silencio, no es un error real, se reinicia solo
+        } else {
+            document.getElementById('timer').textContent = 'Error: ' + e.error;
+        }
+    };
+
+    recognition.onend = function() {
+        isRecording = false;
+        document.getElementById('recordBtn').classList.remove('recording');
+        document.getElementById('timer').textContent = '';
+    };
+
+    try {
+        recognition.start();
+    } catch (err) {
+        document.getElementById('timer').textContent = 'No se pudo iniciar: ' + err.message;
+    }
+}
+
+function autoDetectCategory() {
+    var text = document.getElementById('transcription').value.toLowerCase();
+    var categories = {
+        'pavimento': ['paviment', 'calle', 'asfalto', 'bache', 'hueco', 'roto', 'vereda'],
+        'areas-verdes': ['arbol', 'árbol', 'verde', 'plaza', 'parque', 'pasto', 'poda', 'jardin', 'jardín'],
+        'aseo': ['basura', 'limpi', 'suci', 'escombro', 'residuo', 'desecho'],
+        'alumbrado': ['luz', 'lampara', 'lámpara', 'farol', 'iluminacion', 'iluminación', 'oscur', 'alumbrado']
+    };
+    for (var cat in categories) {
+        var keywords = categories[cat];
+        for (var k = 0; k < keywords.length; k++) {
+            if (text.indexOf(keywords[k]) !== -1) {
+                document.getElementById('category').value = cat;
+                return;
+            }
+        }
+    }
+}
+
+function saveNote() {
+    var text = document.getElementById('transcription').value.trim();
+    var category = document.getElementById('category').value;
+    var address = document.getElementById('addressInput').value.trim();
+
+    if (!text) { alert('Por favor escribe o dicta algo'); return; }
+    if (!category) { alert('Por favor selecciona una categoria'); return; }
+    if (!currentLocation) { alert('Esperando ubicacion GPS... espera unos segundos e intenta de nuevo'); return; }
+
+    var note = {
+        id: Date.now(),
+        text: text, category: category, address: address,
+        lat: currentLocation.lat, lng: currentLocation.lng,
+        timestamp: new Date().toISOString(), synced: false,
+        hasPhoto: !!pendingPhotoBase64, photoUrl: null
+    };
+
+    if (pendingPhotoBase64) photosPending[note.id] = 'data:image/jpeg;base64,' + pendingPhotoBase64;
+
+    notes.push(note);
+    saveNotes();
+    renderNotesList();
+    clearForm();
+
+    var btn = document.getElementById('saveBtn');
+    var original = btn.textContent;
+    btn.textContent = 'Guardado!';
+    setTimeout(function() { btn.textContent = original; }, 1200);
+
+    autoSyncNote(note);
+}
+
+function autoSyncNote(note) {
+    syncOne(note, document.getElementById('syncStatus'));
+}
+
+function syncOne(note, status) {
+    var photoDataUrl = photosPending[note.id];
+    var photoBase64 = photoDataUrl ? photoDataUrl.split(',')[1] : null;
+
+    if (status) status.innerHTML = '<div class="sync-status"><span class="loading"></span> Sincronizando...</div>';
+
+    fetch(SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({
+            text: note.text, category: note.category, address: note.address,
+            lat: note.lat, lng: note.lng, timestamp: note.timestamp,
+            photoBase64: photoBase64
+        })
+    })
+    .then(function(res) { return res.json(); })
+    .then(function(result) {
+        note.synced = true;
+        if (result && result.photoUrl) note.photoUrl = result.photoUrl;
+        delete photosPending[note.id];
+        saveNotes();
+        renderNotesList();
+        if (status) {
+            status.innerHTML = '<div class="sync-status">Sincronizado</div>';
+            setTimeout(function() { status.innerHTML = ''; }, 1500);
+        }
+    })
+    .catch(function(err) {
+        if (status) status.innerHTML = '<div class="sync-status error">No se pudo sincronizar aun (' + err.message + '). Se reintentara.</div>';
+    });
+}
+
+function clearForm() {
+    document.getElementById('transcription').value = '';
+    document.getElementById('category').value = '';
+    document.getElementById('addressInput').value = '';
+    clearPendingPhoto();
+}
+
+function handlePhotoSelected(e) {
+    var file = e.target.files[0];
+    if (!file) return;
+    compressImage(file, 1280, 0.65).then(function(dataUrl) {
+        pendingPhotoBase64 = dataUrl.split(',')[1];
+        document.getElementById('photoPreviewImg').src = dataUrl;
+        document.getElementById('photoPreview').style.display = 'flex';
+    }).catch(function() {
+        alert('No se pudo procesar la foto. Intenta de nuevo.');
+    });
+}
+
+function clearPendingPhoto() {
+    pendingPhotoBase64 = null;
+    document.getElementById('photoInput').value = '';
+    document.getElementById('photoPreview').style.display = 'none';
+}
+
+function compressImage(file, maxDim, quality) {
+    return new Promise(function(resolve, reject) {
+        var reader = new FileReader();
+        reader.onload = function(e) {
+            var img = new Image();
+            img.onload = function() {
+                var width = img.width, height = img.height;
+                if (width > maxDim || height > maxDim) {
+                    if (width > height) { height = Math.round(height * (maxDim / width)); width = maxDim; }
+                    else { width = Math.round(width * (maxDim / height)); height = maxDim; }
+                }
+                var canvas = document.createElement('canvas');
+                canvas.width = width; canvas.height = height;
+                canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+                resolve(canvas.toDataURL('image/jpeg', quality));
+            };
+            img.onerror = reject;
+            img.src = e.target.result;
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
+}
+
+function viewPhoto(id) {
+    var note = notes.find(function(n) { return n.id === id; });
+    if (note && note.photoUrl) window.open(note.photoUrl, '_blank');
+    else if (photosPending[id]) window.open(photosPending[id], '_blank');
+    else alert('Foto no disponible (aun sincronizando)');
+}
+
+function deleteNote(id) {
+    notes = notes.filter(function(n) { return n.id !== id; });
+    saveNotes();
+    renderNotesList();
+}
+
+function editNote(id) {
+    var note = notes.find(function(n) { return n.id === id; });
+    if (note) {
+        document.getElementById('transcription').value = note.text;
+        document.getElementById('category').value = note.category;
+        document.getElementById('addressInput').value = note.address || '';
+        deleteNote(id);
+    }
+}
+
+function saveNotes() {
+    try { localStorage.setItem('terreno_notes', JSON.stringify(notes)); } catch(e) {}
+    updateFooter();
+}
+
+function loadNotes() {
+    try {
+        var saved = localStorage.getItem('terreno_notes');
+        notes = saved ? JSON.parse(saved) : [];
+    } catch(e) { notes = []; }
+    renderNotesList();
+}
+
+function renderNotesList() {
+    var list = document.getElementById('notesList');
+    document.getElementById('noteCount').textContent = notes.length;
+    var reversed = notes.slice().reverse();
+    list.innerHTML = reversed.map(function(note) {
+        var catClass = 'cat-' + note.category;
+        var time = new Date(note.timestamp).toLocaleTimeString('es-CL', {hour: '2-digit', minute: '2-digit'});
+        var synced = note.synced ? '[ok]' : '[local]';
+        var photoBtn = note.hasPhoto ? ('<button onclick="viewPhoto(' + note.id + ')">Foto</button>') : '';
+        var addressLine = note.address ? ('<div class="note-address">' + PIN_ICON + ' ' + escapeHtml(note.address) + '</div>') : '';
+        return '<div class="note-item">' +
+            '<div class="note-category ' + catClass + '">' + note.category.toUpperCase() + '</div>' +
+            '<div class="note-text">' + escapeHtml(note.text) + '</div>' +
+            addressLine +
+            '<div class="note-meta"><span>' + time + ' ' + synced + '</span>' +
+            '<div class="note-actions">' + photoBtn +
+            '<button onclick="editNote(' + note.id + ')">Editar</button>' +
+            '<button onclick="deleteNote(' + note.id + ')">Borrar</button>' +
+            '<button onclick="openMaps(' + note.lat + ',' + note.lng + ')">Mapa</button>' +
+            '</div></div></div>';
+    }).join('');
+}
+
+function escapeHtml(str) {
+    var div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+function updateFooter() {
+    // reservado para futuros contadores en pie de pagina si se necesitan
+}
+
+function openMaps(lat, lng) {
+    window.open('https://maps.google.com/?q=' + lat + ',' + lng, '_blank');
+}
+
+function syncToSheets() {
+    var unsynced = notes.filter(function(n) { return !n.synced; });
+    if (unsynced.length === 0) { alert('Todas las notas estan sincronizadas'); return; }
+    var status = document.getElementById('syncStatus');
+    syncSequential(unsynced, 0, status);
+}
+
+function syncSequential(unsynced, index, status) {
+    if (index >= unsynced.length) {
+        saveNotes();
+        renderNotesList();
+        status.innerHTML = '<div class="sync-status">Sincronizado correctamente</div>';
+        setTimeout(function() { status.innerHTML = ''; }, 3000);
+        return;
+    }
+    var note = unsynced[index];
+    var photoDataUrl = photosPending[note.id];
+    var photoBase64 = photoDataUrl ? photoDataUrl.split(',')[1] : null;
+
+    status.innerHTML = '<div class="sync-status"><span class="loading"></span> Sincronizando ' + (index+1) + '/' + unsynced.length + '...</div>';
+
+    fetch(SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({
+            text: note.text, category: note.category, address: note.address,
+            lat: note.lat, lng: note.lng, timestamp: note.timestamp,
+            photoBase64: photoBase64
+        })
+    })
+    .then(function(res) { return res.json(); })
+    .then(function(result) {
+        note.synced = true;
+        if (result && result.photoUrl) note.photoUrl = result.photoUrl;
+        delete photosPending[note.id];
+        syncSequential(unsynced, index + 1, status);
+    })
+    .catch(function(err) {
+        status.innerHTML = '<div class="sync-status error">Error en nota ' + (index+1) + ': ' + err.message + '</div>';
+    });
+}
+
+function generateReport() {
+    if (notes.length === 0) { alert('No hay notas para generar informe'); return; }
+    var stats = { total: notes.length, pavimento: 0, 'areas-verdes': 0, aseo: 0, alumbrado: 0, otro: 0 };
+    notes.forEach(function(n) { if (stats.hasOwnProperty(n.category)) stats[n.category]++; });
+
+    var html = '<div class="report-stats">' +
+        '<div class="stat-box"><div class="stat-number">' + stats.total + '</div><div class="stat-label">Total</div></div>' +
+        '<div class="stat-box"><div class="stat-number">' + stats.pavimento + '</div><div class="stat-label">Pavimentos</div></div>' +
+        '<div class="stat-box"><div class="stat-number">' + stats['areas-verdes'] + '</div><div class="stat-label">Areas verdes</div></div>' +
+        '<div class="stat-box"><div class="stat-number">' + stats.aseo + '</div><div class="stat-label">Aseo</div></div>' +
+        '<div class="stat-box"><div class="stat-number">' + stats.alumbrado + '</div><div class="stat-label">Alumbrado</div></div>' +
+        '</div><h3 style="margin-top:1rem;margin-bottom:0.5rem;">Detalle de Solicitudes</h3>';
+
+    ['pavimento','areas-verdes','aseo','alumbrado','otro'].forEach(function(cat) {
+        var catNotes = notes.filter(function(n) { return n.category === cat; });
+        if (catNotes.length > 0) {
+            html += '<h4 style="color:#666;margin-top:1rem;margin-bottom:0.5rem;font-size:0.95rem;">' + cat.toUpperCase() + ' (' + catNotes.length + ')</h4>';
+            catNotes.forEach(function(note) {
+                var time = new Date(note.timestamp).toLocaleTimeString('es-CL');
+                var photoLink = note.hasPhoto ? (' - <a href="#" onclick="event.stopPropagation();viewPhoto(' + note.id + ');return false;">ver foto</a>') : '';
+                var addressText = note.address ? (' - ' + PIN_ICON + ' ' + escapeHtml(note.address)) : '';
+                html += '<div style="background:#f9f9f9;padding:0.75rem;margin-bottom:0.5rem;border-radius:4px;cursor:pointer;border-left:3px solid #3498db;" ' +
+                    'onclick="window.open(\'https://maps.google.com/?q=' + note.lat + ',' + note.lng + '\',\'_blank\')">' +
+                    '<strong style="font-size:0.9rem;">' + time + '</strong> | ' + escapeHtml(note.text) + photoLink + addressText +
+                    '<div style="font-size:0.75rem;color:#999;margin-top:0.25rem;">' + note.lat.toFixed(5) + ', ' + note.lng.toFixed(5) + '</div></div>';
+            });
+        }
+    });
+
+    html += '<div style="margin-top:1rem;padding-top:1rem;border-top:1px solid #ddd;font-size:0.85rem;color:#999;">' +
+        'Generado: ' + new Date().toLocaleString('es-CL') + '<br>Haz click en cualquier solicitud para verla en Google Maps</div>';
+
+    document.getElementById('reportContent').innerHTML = html;
+    document.getElementById('reportModal').style.display = 'block';
+}
+
+function closeReport() {
+    document.getElementById('reportModal').style.display = 'none';
+}
+
+window.addEventListener('click', function(e) {
+    if (e.target === document.getElementById('reportModal')) closeReport();
+});
+</script>
+</body>
+</html>
